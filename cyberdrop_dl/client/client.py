@@ -15,6 +15,7 @@ from yarl import URL
 
 import aiohttp
 import certifi
+from aiohttp_socks import ProxyConnector
 
 from cyberdrop_dl.downloader.progress_definitions import file_progress
 from .rate_limiting import AsyncRateLimiter, throttle
@@ -26,7 +27,7 @@ from ..downloader.downloader_utils import CustomHTTPStatus
 
 class Client:
     """Creates a 'client' that can be referenced by scraping or download sessions"""
-    def __init__(self, ratelimit: int, throttle: int, secure: bool, connect_timeout: int):
+    def __init__(self, ratelimit: int, throttle: int, secure: bool, connect_timeout: int, proxy: str):
         self.connect_timeout = connect_timeout
         self.ratelimit = ratelimit
         self.throttle = throttle
@@ -35,6 +36,7 @@ class Client:
         self.verify_ssl = secure
         self.ssl_context = ssl.create_default_context(cafile=certifi.where()) if secure else False
         self.cookies = aiohttp.CookieJar(quote_cookie=False)
+        self.proxy = proxy
 
 
 class ScrapeSession:
@@ -44,7 +46,8 @@ class ScrapeSession:
         self.rate_limiter = AsyncRateLimiter(self.client.ratelimit)
         self.headers = {"user-agent": client.user_agent}
         self.timeouts = aiohttp.ClientTimeout(total=5 * 60, connect=self.client.connect_timeout, sock_read=30)
-        self.client_session = aiohttp.ClientSession(headers=self.headers, raise_for_status=True, cookie_jar=self.client.cookies, timeout=self.timeouts)
+        connector = ProxyConnector.from_url(self.client.proxy, rdns=False) if self.client.proxy else None
+        self.client_session = aiohttp.ClientSession(headers=self.headers, raise_for_status=True, cookie_jar=self.client.cookies, timeout=self.timeouts, connector=connector)
 
     async def get_BS4(self, url: URL):
         async with self.client.simultaneous_session_limit:
